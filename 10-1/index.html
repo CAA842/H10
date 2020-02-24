@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+
+<head>
+  <meta charset="UTF-8" />
+  <title>10-1 React-Redux</title>
+</head>
+
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@16/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@16/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/redux@latest/dist/redux.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/6.21.1/babel.min.js"></script>
+  <script src="https://unpkg.com/react-redux@latest/dist/react-redux.js"></script>
+
+  <script type="text/babel">
+
+  const { createStore, combineReducers, applyMiddleware, compose } = Redux;
+  const { connect, Provider} = ReactRedux;
+
+
+  // Actions
+
+  const ADD_PLAYER = "ADD_PLAYER";
+  const DELETE_PLAYER = "DELETE_PLAYER";
+  const RETIRE_PLAYER = "RETIRE_PLAYER";
+  const SHOW_PLAYER = "SHOW_PLAYER";
+
+  function addPlayer(name, active) {
+    return { type: ADD_PLAYER, name, active };
+  }
+  function deletePlayer(id) {
+    return { type: DELETE_PLAYER, id };
+  }
+  function retirePlayer(id) {
+    return { type: RETIRE_PLAYER, id };
+  }
+  function showPlayer(player, id) {
+    return { type: SHOW_PLAYER, player, id };
+  }
+
+
+  // Reducers
+
+  function playersList(state = initialPlayerState, action) {
+    switch (action.type) {
+      case ADD_PLAYER:
+      return {
+        ...state,
+        players: {
+          ...state.players,
+          [state.nextId]: {
+            name: action.name,
+            active: action.active
+          }
+        },
+        nextId: state.nextId + 1
+      };
+      case DELETE_PLAYER:
+      return {
+        ...state,
+        players: Object.keys(state.players).reduce((object, key) => {
+          if (key != action.id) {
+            object[key] = state.players[key];
+          }
+          return object;
+        }, {})
+      };
+      case RETIRE_PLAYER:
+      return {
+        ...state,
+        players: {
+          ...state.players,
+          [action.id]: {
+            ...state.players[action.id],
+            active: false
+          }
+        }
+      };
+      default:
+      return state;
+    }
+  }
+
+  function selectedPlayer(state = {}, action) {
+    switch (action.type) {
+      case SHOW_PLAYER:
+      return {
+        selected: action.player,
+        id: action.id
+      }
+      default:
+      return state;
+    }
+  }
+
+  const initialPlayerState = {
+    players: {},
+    nextId: 0
+  };
+
+  function lastAction(state = null, action) {
+    return action;
+  }
+
+  const rootReducer = combineReducers({
+    playersList,
+    selectedPlayer,
+    lastAction
+  });
+
+
+  // Create the store
+  const store = createStore(rootReducer,window.__REDUX_DEVTOOLS_EXTENSION__ && window.__REDUX_DEVTOOLS_EXTENSION__());
+
+  // Add some players
+  store.dispatch(addPlayer("Teemu Selanne", false));
+  store.dispatch(addPlayer("Patrik Laine", true));
+  store.dispatch(addPlayer("Mikael Granlund", true));
+  console.log(store.getState());
+
+
+
+  class MyForm extends React.Component {
+    constructor(props) {
+      super(props);
+      this.state = { name: '', active: false };
+    }
+
+    submitHandler = (event) => {
+      event.preventDefault();
+      store.dispatch(addPlayer(this.state.name, this.state.active));
+    }
+
+    nameChangeHandler = (event) => {
+      this.setState({name: event.target.value});
+    }
+
+    activeChangeHandler = (event) => {
+      this.setState({active: event.target.checked});
+    }
+
+    render() {
+      return (
+        <form id="addPlayerForm" onSubmit={this.submitHandler}>
+
+          Name: <input type="text" name="name" onChange={this.nameChangeHandler}/>
+          <br/>
+          Active: <input type="checkbox" name="active" onChange={this.activeChangeHandler}/>
+          
+          <button id="add" type="submit" value="submit">Add a player</button>
+        
+        </form>
+      );
+    }
+
+  }
+
+
+  function AllPlayers(props) {
+    let players = [];
+    let plr = props.state.players;
+    Object.keys(props.state.players).forEach(function(index) {
+      players.push(plr[index]);
+    });
+
+    return (
+      <div id="allPlayers">
+      <ul>
+      
+      {players.map((player, index) => (
+        <li key={index}>
+          <button onClick={() => {
+            props.state.showPlayer(player, index);
+          }
+          }>{player.name}</button>
+        </li>
+      ))}
+
+      </ul>
+      </div>
+    );
+  }
+
+  function Player(props) {
+    let player = props.state.player.selected;
+    
+    if(player === undefined) {
+      return (<div id="player"></div>);
+    }
+
+    let pId = 0;
+    let deleted = true;
+    let plr = props.state.players;
+
+    Object.keys(props.state.players).forEach(function(index) {
+      if(plr[index].name === player.name) {
+        pId = index;
+        deleted = false;
+      }
+    });
+
+    console.log(props.state);
+
+    if(deleted) {
+      return (<div></div>);
+    }
+
+    if(player.active) {
+      return (
+      <div id="player">
+
+      <p>Name: {player.name}</p>
+      <p>Active: {player.active.toString()}</p>
+
+      <button onClick={() => {
+        props.state.deletePlayer(pId);
+      }}>Delete</button>
+
+      <button onClick={() => {
+        props.state.retirePlayer(pId);
+        player.active = false;
+        props.state.showPlayer(player, pId);
+      }}>Retire player</button>
+
+      </div>);
+    }
+    else {
+      return (<div id="player">
+      <p>Name: {player.name}</p>
+      <p>Active: {player.active.toString()}</p>
+
+      <button onClick={() => {
+        props.state.deletePlayer(pId);
+      }}>Delete</button>
+
+    </div>);
+    }
+
+  }
+
+  function Content(props) {
+    return (
+      <div>
+        <p>Hockey players</p>
+        <AllPlayers state={props}/>
+        <br/>
+        <Player state={props}/>
+        <br/><br/>
+        <MyForm state={props}/>
+      </div>
+    );
+  }
+
+
+  const mapStateToProps = state => ({
+    players: state.playersList.players,
+    player: state.selectedPlayer
+  });
+
+  const mapDispatchToProps = {
+    addPlayer,
+    deletePlayer,
+    retirePlayer,
+    showPlayer
+  };
+
+  const App = connect(
+    mapStateToProps,
+    mapDispatchToProps
+  )(Content);
+
+  ReactDOM.render(
+    <Provider store={store}>
+      <App />
+    </Provider>,
+    document.getElementById('root')
+  );
+
+
+  </script>
+
+</body>
+
+</html>

@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+  <meta charset="UTF-8" />
+  <title>10.3</title>
+</head>
+
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@16/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@16/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/redux@latest/dist/redux.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/6.21.1/babel.min.js"></script>
+  <script src="https://unpkg.com/react-redux@latest/dist/react-redux.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/redux-thunk/2.3.0/redux-thunk.min.js"
+    integrity="sha256-2xw5MpPcdu82/nmW2XQ6Ise9hKxziLWV2GupkS9knuw=" crossorigin="anonymous"></script>
+
+  <script type="text/babel">
+
+const { createStore, combineReducers, applyMiddleware, compose } = Redux;
+const { connect, Provider} = ReactRedux;
+const thunkMiddleware = ReduxThunk.default;
+
+
+/*
+* Actions
+*/
+
+const SAVE_TOKEN = "SAVE_TOKEN";
+
+const REQUEST_PLAYERS = "REQUEST_PLAYERS";
+const REQUEST_PLAYER = "REQUEST_PLAYER";
+const RECEIVE_PLAYERS = "RECEIVE_PLAYERS";
+const RECEIVE_PLAYER = "RECEIVE_PLAYER";
+const ERROR_PLAYERS = "ERROR_PLAYERS";
+const ERROR_PLAYER = "ERROR_PLAYER";
+
+function saveToken(token) {
+  return { type: SAVE_TOKEN, token };
+}
+
+function requestPlayers(url) {
+  return { type: REQUEST_PLAYERS, url};
+}
+
+function requestPlayer(url) {
+  return { type: REQUEST_PLAYER, url};
+}
+
+function errorPlayers(error) {
+  return { type: ERROR_PLAYERS, error};
+}
+
+function errorPlayer(error) {
+  return { type: ERROR_PLAYER, error};
+}
+
+function receivePlayers(json) {
+  return {
+    type: RECEIVE_PLAYERS,
+    players: Object.keys(json).reduce((object, key) => {
+      object[json[key]._id] = {
+        name: json[key].name
+      };
+      return object;
+    }, {}),
+    receivedAt: Date.now()
+  }
+}
+
+function receivePlayer(json) {
+  return {
+    type: RECEIVE_PLAYER,
+    player: {
+        name: json.name,
+        active: json.active,
+    },
+    id:json._id,
+    receivedAt: Date.now()
+  }
+}
+
+function getPlayers(token) {
+  return function(dispatch) {
+    let playerurl = 'http://localhost:3000/api/players';
+    dispatch(requestPlayers(playerurl));
+    
+    return fetch(playerurl, {
+      headers: new Headers({
+        Authorization: 'Bearer ' + token
+      })
+    })
+    .then((response) => {
+      if (response.ok) {
+        return response.json();
+      }
+      else {
+        throw new Error(`Request rejected with status ${response.status}`);
+      }
+    })
+    .then((players) => {
+      store.dispatch(receivePlayers(players));
+    })
+    .catch((error) => {
+      store.dispatch(errorPlayers(error));
+      alert(error);
+    });
+  }
+}
+
+function getPlayer(index, token) {
+  let state = store.getState();
+  let id = Object.keys(state.playersList.players)[index];
+
+  let playerurl = 'http://localhost:3000/api/players/' + id;
+
+  return dispatch => {
+    dispatch(requestPlayer(playerurl))
+    return fetch(playerurl, {
+      headers: new Headers({
+        Authorization: 'Bearer ' + token
+      })
+    })
+    .then((response) => {
+      if (response.ok) {
+        return response.json();
+      }
+      else {
+        throw new Error(`Request rejected with status ${response.status}`);
+      }
+    })
+    .then((player) => {
+      store.dispatch(receivePlayer(player));
+    })
+    .catch((error) => {
+      store.dispatch(errorPlayer(error));
+      alert(error);
+    });
+  }
+}
+
+function addUserAndGetToken(name, password) {
+  return function(dispatch) {
+    let data = JSON.stringify({ name: name, password: password });
+
+    return fetch('http://localhost:3000/api/users', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: data
+    })
+    .then(res => res.json())
+    .then(res => {
+      const token = JSON.stringify(res).replace(/['"]+/g, '');
+      store.dispatch(saveToken(token));
+    });
+  }
+}
+
+/*
+* Reducers
+*/
+
+function receivedToken(state = initialTokenState, action) {
+  if(action.type === SAVE_TOKEN) {
+    return { ...state,
+      token: action.token
+    }
+  }
+  return state;
+}
+
+function playersList(state = initialPlayerState, action) {
+  switch (action.type) {
+    case ERROR_PLAYERS:
+        return { ...state,
+          error: action.error
+        }
+    case REQUEST_PLAYERS:
+        return { ...state,
+          isFetching: true
+        }
+    case RECEIVE_PLAYERS:
+        return { ...state,
+          isFetching: false,
+          players: action.players,
+          lastUpdated: action.receivedAt
+        }
+    default:
+      return state;
+  }
+}
+
+function selectedPlayer(state = {isFetching: false, error: ""}, action) {
+  switch (action.type) {
+    case ERROR_PLAYER:
+        return { ...state,
+          error: action.error
+        }
+    case REQUEST_PLAYER:
+        return { ...state,
+          isFetching: true
+        }
+    case RECEIVE_PLAYER:
+        return { ...state,
+          isFetching: false,
+          selected: action.player,
+          id: action.id,
+          lastUpdated: action.receivedAt
+        }
+    default:
+      return state;
+  }
+}
+
+const initialTokenState = {
+  token: {}
+};
+
+const initialPlayerState = {
+  players: {},
+  isFetching: false,
+  lastUpdated: 0,
+  error: ""
+};
+
+function lastAction(state = null, action) {
+  return action;
+}
+
+const rootReducer = combineReducers({
+  playersList,
+  selectedPlayer,
+  receivedToken,
+  lastAction
+});
+
+const composeEnhancers = window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__ || compose;
+
+// Create store
+const store = createStore(rootReducer,composeEnhancers(applyMiddleware(thunkMiddleware)));
+
+
+/*
+* Other functions
+*/
+
+function addUser(name, password) {
+  let tokenPromise = store.dispatch(addUserAndGetToken(name, password));
+  tokenPromise.then(function(value) {
+    console.log(store.getState());
+  });
+}
+
+/*
+* React stuff
+*/
+
+class MyForm extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { username: '', password: '' };
+  }
+
+  submitHandler = (event) => {
+    event.preventDefault();
+    addUser(this.state.username, this.state.password);
+  }
+
+  nameChangeHandler = (event) => {
+    this.setState({username: event.target.value});
+  }
+
+  passwordChangeHandler = (event) => {
+    this.setState({password: event.target.value});
+  }
+
+  render() {
+    return (
+      <form id="userCreation" onSubmit={this.submitHandler}>
+
+      <p>Create a user to log in:</p>
+      Username: <input type="text" id="username" onChange={this.nameChangeHandler}/><br/>
+      Password: <input type="password" id="password" onChange={this.passwordChangeHandler}/><br/>
+      <button type="submit">Create user</button>
+
+      </form>
+    );
+  }
+
+}
+
+function AllPlayers(props) {
+  if(Object.entries(props.state.players).length === 0 && props.state.players.constructor === Object) {
+    let promisePlayers = store.dispatch(getPlayers(props.state.token));
+    promisePlayers.then(function(value) {
+      console.log(store.getState());
+    });
+  }
+
+  let players = [];
+  let plr = props.state.players;
+  Object.keys(props.state.players).forEach(function(index) {
+    players.push(plr[index]);
+  });
+
+  
+  return (
+    <div id="allPlayers">
+      <ul>
+      
+      {players.map((player, index) => (
+        <li key={index}>
+          <button onClick={() => {;
+            let playerPromise = store.dispatch(getPlayer(index, props.state.token));
+            playerPromise.then(function(value) {
+              console.log(store.getState());
+            });
+          }
+          }>{player.name}</button>
+        </li>
+      ))}
+  
+      </ul>
+    </div>
+  );
+}
+
+function Player(props) {
+  let player = props.state.player.selected;
+  if(player !== undefined) {
+    return (
+      <div>
+        <p>Name: {player.name}</p>
+        <p>Active: {player.active.toString()}</p>
+      </div>
+    );
+  }
+  else {
+    return (<div></div>);
+  }
+}
+
+function Content(props) {
+  if(Object.entries(props.token).length === 0 && props.token.constructor === Object) {
+    return (
+      <div>
+        <MyForm state={props}/>
+      </div>
+    );
+  }
+  else {
+    return (
+      <div>
+
+        <p>Logged in</p>
+        <br/>
+        <p>Hockey players:</p>
+        <AllPlayers state={props}/>
+        <br/>
+        <Player state={props}/>
+
+      </div>
+    )
+  }
+}
+
+
+const mapStateToProps = state => ({
+  players: state.playersList.players,
+  player: state.selectedPlayer,
+  token: state.receivedToken.token
+});
+
+const mapDispatchToProps = {
+  requestPlayers,
+  requestPlayer,
+  errorPlayers,
+  errorPlayer,
+  receivePlayers,
+  receivePlayer
+};
+
+const App = connect(
+  mapStateToProps,
+  mapDispatchToProps
+)(Content);
+
+ReactDOM.render(
+  <Provider store={store}>
+    <App />
+  </Provider>,
+  document.getElementById('root')
+);
+
+
+</script>
+
+</body>
+
+</html>
